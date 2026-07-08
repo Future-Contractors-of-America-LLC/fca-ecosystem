@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  # ASP.NET Core Backend
+  auricrux-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:8080
+      - LLM__Provider=openai
+      - LLM__ApiKey=${LLM_API_KEY}
+      - LLM__Model=gpt-4
+      - LLM__ApiUrl=http://ollama:11434
+      - TTS__Provider=coqui
+      - TTS__ServiceUrl=http://auricrux-tts:5000
+      - AllowedOrigins=http://localhost:3000,http://localhost:3001,http://localhost:5173,http://auricrux-web
+    depends_on:
+      - auricrux-tts
+    networks:
+      - auricrux-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/auricrux/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Python TTS Service (Coqui)
+  auricrux-tts:
+    build:
+      context: ./tts-service
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5000"
+    environment:
+      - TTS_MODEL=tts_models/en/ljspeech/tacotron2-DDC
+      - USE_GPU=false
+      - FLASK_ENV=production
+    volumes:
+      - tts-models:/root/.local/share/tts_models
+    networks:
+      - auricrux-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    restart: unless-stopped
+
+  # Optional: Local LLM via Ollama
+  # Uncomment to use local models instead of OpenAI API
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   environment:
+  #     - OLLAMA_HOST=0.0.0.0:11434
+  #   volumes:
+  #     - ollama-data:/root/.ollama
+  #   networks:
+  #     - auricrux-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   restart: unless-stopped
+  #   # After starting, pull a model:
+  #   # docker exec auricrux-ollama ollama pull mistral
+
+networks:
+  auricrux-network:
+    driver: bridge
+
+volumes:
+  tts-models:
+    driver: local
+  # ollama-data:
+  #   driver: local
